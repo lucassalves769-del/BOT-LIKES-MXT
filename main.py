@@ -178,4 +178,4 @@ async def on_ready():
     print(f"📌 Comandos prontos: /like | /regras\n")
 
 bot.run(TOKEN_BOT)
-        
+                              
