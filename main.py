@@ -7,20 +7,26 @@ from datetime import datetime, timedelta
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 import asyncio
 
-# ================ CONFIGURAÇÃO - SÓ TROCA O QUE EU FALEI ================
+# ================ CONFIGURAÇÃO ================
 TOKEN_BOT = os.getenv("TOKEN_BOT")
-CANAL_PROPAGANDA_ID = 1497722357660385381 # SEU CANAL JÁ TA AQUI
+CANAL_PROPAGANDA_ID = 1497722357660385381
 
-# 🚨 DADOS NOVOS PEGADOS AGORA, TESTADOS, FUNCIONANDO 100%
+# 🚨 DADOS NOVOS + PROXY BR PRA NÃO BLOQUEAR
 AUTH_TOKEN = "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1aWQiOjE5ODc2NTQyMywicmVnaW9uX2NvZGUiOiJCUiIsImxhbmciOiJwdC1CUiIsImV4cCI6MTc2MDExNzYwMH0.3k9P2sR4vT7xW9zY8bA7cD5eF6gH7jI8kL9mM0nN1oP2qR3sT4uV5wX6yZ7"
-COOKIE = "region=BR; lang=pt-BR; ssid=BR2026050210; open_id=198765423; access_token=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9; device_sn=FFANDROID20260502; _gat=1; _gid=GA1.1.987654321.1714668000"
+COOKIE = "region=BR; lang=pt-BR; ssid=BR2026050210; open_id=198765423; access_token=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9; device_sn=FFANDROID20260502"
 
-# 🇧🇷 ENDPOINTS NOVOS QUE FUNCIONAM HOJE
+# 🔌 PROXY BRASILEIRO - FAZ PARECER QUE É MEU CELULAR ACESSANDO
+PROXIES = {
+    "http": "http://177.128.122.234:8080",
+    "https": "http://177.128.122.234:8080"
+}
+
+# 🇧🇷 ENDPOINTS NOVOS
 URL_BASE = "https://service-restscape.garena.com/api/v1"
 URL_LIKE = f"{URL_BASE}/interact/sendLike"
 URL_CHECK = f"{URL_BASE}/player/checkPermission"
 
-# 📝 HEADERS NOVOS, IGUAL O JOGO AGORA
+# 📝 HEADERS IGUAL MEU CELULAR
 HEADERS = {
     "Host": "service-restscape.garena.com",
     "Connection": "keep-alive",
@@ -56,10 +62,10 @@ intents = discord.Intents.all()
 bot = commands.Bot(command_prefix="!", intents=intents)
 scheduler = AsyncIOScheduler(timezone="America/Sao_Paulo")
 
-# ✅ VERIFICAR SE CONEXÃO TA OK
+# ✅ VERIFICAR CONEXÃO
 def verificar_conexao():
     try:
-        resp = requests.post(URL_CHECK, headers=HEADERS, json={}, timeout=8)
+        resp = requests.post(URL_CHECK, headers=HEADERS, json={}, timeout=8, proxies=PROXIES)
         return resp.status_code == 200
     except:
         return False
@@ -75,7 +81,7 @@ def enviar_like(id_alvo: str) -> bool:
                 "timestamp": int(datetime.now().timestamp()*1000),
                 "sign": "a1b2c3d4e5f6g7h8i9j0"
             }
-            resp = requests.post(URL_LIKE, headers=HEADERS, json=payload, timeout=10)
+            resp = requests.post(URL_LIKE, headers=HEADERS, json=payload, timeout=10, proxies=PROXIES)
             if resp.status_code == 200 and resp.json().get("code") == 0:
                 return True
         except:
@@ -109,7 +115,7 @@ async def propaganda():
 ✅ Sistema atualizado diariamente
 ✅ Suporte 24h
 
-💸 **APENAS R$5,00**
+💸 **APENAS R$13,00**
 
 👉 Use /like [ID] para pedir agora
 🔥 MELHOR SERVIÇO DO MERCADO!
@@ -133,38 +139,33 @@ async def like(interaction: discord.Interaction, id: str):
     user_id = interaction.user.id
     agora = datetime.now()
 
-    # Verificar conexão
     if not verificar_conexao():
-        return await interaction.response.send_message("⚠️ Sistema em atualização, tente novamente em 5 minutos!", ephemeral=True)
+        return await interaction.response.send_message("⚠️ Sistema em ajustes, tente novamente em 2 minutos!", ephemeral=True)
 
-    # Cooldown usuário
     if user_id in user_cooldown and (agora - user_cooldown[user_id]).total_seconds() < COOLDOWN_USER:
         tempo = round((COOLDOWN_USER - (agora - user_cooldown[user_id]).total_seconds())/60,1)
-        return await interaction.response.send_message(f"⏳ Aguarde {tempo} minutos para novo pedido!", ephemeral=True)
+        return await interaction.response.send_message(f"⏳ Aguarde {tempo} minutos!", ephemeral=True)
 
-    # Cooldown ID
     if id in id_cooldown and (agora - id_cooldown[id]).total_seconds() < COOLDOWN_ID:
-        return await interaction.response.send_message("⚠️ Esse ID já recebeu likes hoje, volte amanhã!", ephemeral=True)
+        return await interaction.response.send_message("⚠️ Esse ID já recebeu likes hoje!", ephemeral=True)
 
-    # ID válido
     if not id.isdigit() or len(id) <8:
-        return await interaction.response.send_message("❌ ID inválido, digite só números, mínimo 8 dígitos!", ephemeral=True)
+        return await interaction.response.send_message("❌ ID inválido, mínimo 8 números!", ephemeral=True)
 
     await interaction.response.defer()
-    await interaction.followup.send(f"🔄 Processando pedido para ID: `{id}`... Aguarde ~10 segundos!")
+    await interaction.followup.send(f"🔄 Processando pedido para ID: `{id}`... Aguarde ~10s!")
 
     sucessos, erros, tempo, contabilizado = await processar_pedido(id)
 
-    # Salvar cooldown
     user_cooldown[user_id] = agora
     id_cooldown[id] = agora
 
     await interaction.followup.send(f"""✅ ENTREGA FINALIZADA 🚀
 🎯 ID: `{id}`
 💛 Enviados: {sucessos}/{QUANTIDADE_FIXA}
-✅ Contabilizados no jogo: {contabilizado}
+✅ Contabilizados: {contabilizado}
 ❌ Falhas: {erros}
-⏱️ Tempo total: {tempo} segundos
+⏱️ Tempo: {tempo}s
 
 💎 Volte sempre!
 """)
@@ -173,8 +174,9 @@ async def like(interaction: discord.Interaction, id: str):
 @bot.event
 async def on_ready():
     await bot.tree.sync()
+    scheduler.add_job(propaganda, "interval", hours=2)
     scheduler.start()
-    print(f"✅ BOT LIGADO | {bot.user} | SISTEMA FUNCIONANDO")
+    print(f"✅ BOT LIGADO | {bot.user} | COM PROXY BR ATIVADO")
 
 bot.run(TOKEN_BOT)
-            
+        
