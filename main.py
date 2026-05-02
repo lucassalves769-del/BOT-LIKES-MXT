@@ -2,99 +2,103 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 import requests
-import os
 from datetime import datetime
-import asyncio
+import os
 
-# ================ CONFIGURAÇÃO SÓ TROCA ISSO ================
-TOKEN_BOT = "MTQ5OTkxNDU1MzczMDAxMTI2Nw.GWzAJF.z8CuT-29ZSS4zdmAWPccTeMsVRgMYuHHptuMB0" # COLOCA SEU TOKEN AQUI DIRETO, É MAIS FÁCIL NO CELULAR
-CANAL_PROPAGANDA = 1497722357660385381 # ID DO SEU CANAL
+# ================ PEGA TUDO DAS VARIÁVEIS ================
+TOKEN_BOT = os.getenv("TOKEN_BOT")
+API_URL = os.getenv("API_URL")
+API_KEY = os.getenv("API_KEY")
+CANAL_PERMITIDO = int(os.getenv("CANAL_ID", 0))
 
-# 🚨 DADOS NOVOS, TESTADOS, SEM BLOQUEIO
-AUTH_TOKEN = "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1aWQiOjE5ODc2NTQyMywicmVnaW9uX2NvZGUiOiJCUiIsImxhbmciOiJwdC1CUiIsImV4cCI6MTc2MDExNzYwMH0.3k9P2sR4vT7xW9zY8bA7cD5eF6gH7jI8kL9mM0nN1oP2qR3sT4uV5wX6yZ7"
-COOKIE = "region=BR; lang=pt-BR; open_id=198765423; ssid=BR2026050210; device_sn=FFMOBILE2026"
-
-# 🇧🇷 LINKS NOVOS QUE FUNCIONAM
-URL_BASE = "https://service-restscape.garena.com/api/v1"
-URL_LIKE = f"{URL_BASE}/interact/sendLike"
-URL_INFO = f"{URL_BASE}/player/getDetail"
-
-HEADERS = {
-    "Host": "service-restscape.garena.com",
-    "Authorization": AUTH_TOKEN,
-    "Cookie": COOKIE,
-    "x-region-code": "BR",
-    "User-Agent": "FreeFire-Mobile/1.103.1 (Android 14)"
-}
-
-# ==================================================
-QUANTIDADE = 220
+# CONTROLE DE COOLDOWN
 cooldown_user = {}
 cooldown_id = {}
+# ==================================================
 
+# CONFIGURAÇÃO DO BOT
 intents = discord.Intents.all()
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-# PEGAR INFO IGUAL IMAGEM
-def pegar_info(id_jogador):
+# FUNÇÃO QUE CHAMA A API
+def chamar_api(id_jogador: str):
     try:
-        res = requests.post(URL_INFO, json={"uid":id_jogador,"server_id":"BR"}, headers=HEADERS, timeout=8)
-        if res.json().get("code") ==0:
-            d = res.json()["data"]
-            return {"nick":d["nickname"],"level":d["level"],"reg":"BR"}
-        return {"nick":"Não encontrado","level":"??","reg":"BR"}
-    except:
-        return {"nick":"Erro ao carregar","level":"??","reg":"BR"}
+        headers = {"X-API-Key": API_KEY, "Content-Type": "application/json"}
+        dados = {"id_jogador": id_jogador}
+        res = requests.post(f"{API_URL}/enviar", json=dados, headers=headers, timeout=30)
+        return res.json()
+    except Exception as e:
+        print(f"Erro: {e}")
+        return {"status":"ERRO","mensagem":"Sistema fora do ar, tente novamente mais tarde"}
 
-# ENVIAR LIKES
-def enviar_likes(id_jogador):
-    ok =0
-    for _ in range(QUANTIDADE):
-        try:
-            res = requests.post(URL_LIKE, json={"uid":id_jogador,"type":1,"server_id":"BR","timestamp":int(datetime.now().timestamp()*1000)}, headers=HEADERS, timeout=5)
-            if res.json().get("code")==0: ok+=1
-        except: pass
-        asyncio.sleep(0.03)
-    return ok, min(ok,220)
-
-# COMANDOS
+# QUANDO BOT LIGAR
 @bot.event
 async def on_ready():
     await bot.tree.sync()
-    print(f"✅ BOT LIGADO | {bot.user} | MOBILE MODE")
+    print(f"✅ BOT DISCORD LIGADO | {bot.user} | CONECTADO")
 
-@bot.tree.command(name="like", description="Receber 220 likes")
-@app_commands.describe(id="ID do jogador")
-async def like(interaction:discord.Interaction,id:str):
-    user = str(interaction.user.id)
+# 🎯 COMANDO PRINCIPAL /like
+@bot.tree.command(name="like", description="Receba 220 likes no seu perfil Free Fire")
+@app_commands.describe(id="Digite apenas os números do seu ID")
+async def like(interaction: discord.Interaction, id: str):
     agora = datetime.now()
+    user_id = str(interaction.user.id)
 
-    # Verificações
-    if not id.isdigit() or len(id)<8:
-        return await interaction.response.send_message("❌ ID inválido!",ephemeral=True)
-    if user in cooldown_user and (agora-cooldown_user[user]).total_seconds()<120:
-        return await interaction.response.send_message("⏳ Aguarde 2 minutos!",ephemeral=True)
-    if id in cooldown_id and (agora-cooldown_id[id]).total_seconds()<86400:
-        return await interaction.response.send_message("⚠️ ID já usado hoje!",ephemeral=True)
+    # Verificar se é no canal certo (se configurou)
+    if CANAL_PERMITIDO != 0 and interaction.channel.id != CANAL_PERMITIDO:
+        return await interaction.response.send_message("❌ Use esse comando apenas no canal correto!", ephemeral=True)
 
+    # Validação do ID
+    if not id.isdigit() or len(id) < 8:
+        return await interaction.response.send_message("❌ ID inválido! Digite só números, mínimo 8 dígitos.", ephemeral=True)
+
+    # Cooldown usuário
+    if user_id in cooldown_user and (agora - cooldown_user[user_id]).total_seconds() < 120:
+        tempo = round((120 - (agora - cooldown_user[user_id]).total_seconds())/60, 1)
+        return await interaction.response.send_message(f"⏳ Aguarde {tempo} minutos para novo pedido!", ephemeral=True)
+
+    # Cooldown ID
+    if id in cooldown_id and (agora - cooldown_id[id]).total_seconds() < 86400:
+        return await interaction.response.send_message("⚠️ Esse ID já recebeu likes nas últimas 24h!", ephemeral=True)
+
+    # Avisar que tá processando
     await interaction.response.defer()
-    info = pegar_info(id)
-    await interaction.followup.send(f"🔄 Processando...\n👤 Nick: {info['nick']}\n📊 Level: {info['level']}\n🌍 Região: {info['reg']}")
+    await interaction.followup.send(f"🔄 Processando pedido para ID: `{id}`... Aguarde ~10s")
 
-    enviados, contabilizados = enviar_likes(id)
-    cooldown_user[user] = agora
-    cooldown_id[id] = agora
+    # Chamar API
+    resposta = chamar_api(id)
 
-    # 🎨 VISUAL IGUAL EXATAMENTE A IMAGEM
-    embed = discord.Embed(color=0x00ff00)
-    embed.add_field(name="✅ Likes Enviados", value=f"`{enviados}/{contabilizados}`", inline=False)
-    embed.add_field(name="👤 Usuário", value=f"<@{interaction.user.id}>", inline=False)
-    embed.add_field(name="🆔 Free Fire ID", value=f"`{id}`", inline=False)
-    embed.add_field(name="✅ Status", value=f"{contabilizados} likes enviados", inline=False)
-    embed.add_field(name="🔌 API", value="Automático", inline=True)
-    embed.add_field(name="⏰ Horário", value=datetime.now().strftime("%H:%M:%S"), inline=True)
-    embed.add_field(name="📋 Informações do Jogador", value=f"Nick: {info['nick']}\nLevel: {info['level']}\nRegião: {info['reg']}", inline=False)
+    if resposta["status"] == "SUCESSO":
+        # Salvar cooldown
+        cooldown_user[user_id] = agora
+        cooldown_id[id] = agora
 
-    await interaction.followup.send(embed=embed)
+        # 🎨 VISUAL IGUAL O QUE VOCÊ QUERIA
+        embed = discord.Embed(title="✅ LIKES ENVIADOS COM SUCESSO 🎉", color=0x00FF00, timestamp=datetime.now())
+        embed.add_field(name="👤 Usuário", value=f"<@{interaction.user.id}>", inline=False)
+        embed.add_field(name="🆔 Free Fire ID", value=f"`{resposta['id']}`", inline=False)
+        embed.add_field(name="📋 Informações do Jogador", value=f"Nick: `{resposta['nick']}`\nLevel: {resposta['nivel']}\nRegião: {resposta['regiao']}", inline=False)
+        embed.add_field(name="💛 Quantidade", value=f"`{resposta['enviados']}/{resposta['contabilizados']}`", inline=False)
+        embed.add_field(name="⏰ Horário", value=resposta['hora'], inline=True)
+        embed.add_field(name="🔌 API", value="Automático", inline=True)
+        embed.add_field(name="✅ Status", value=f"{resposta['contabilizados']} likes adicionados", inline=False)
+
+        await interaction.followup.send(embed=embed)
+    else:
+        await interaction.followup.send(f"❌ Erro: {resposta['mensagem']}")
+
+# 📊 COMANDO STATUS
+@bot.tree.command(name="status", description="Verificar status do sistema")
+async def status(interaction: discord.Interaction):
+    try:
+        headers = {"X-API-Key": API_KEY}
+        res = requests.get(f"{API_URL}/status", headers=headers, timeout=10).json()
+        embed = discord.Embed(title="📊 STATUS DO SISTEMA", color=0x2ECC71)
+        embed.add_field(name="🤖 Sistema", value=res["sistema"], inline=False)
+        embed.add_field(name="💛 Likes por pedido", value=f"{res['qtd_por_pedido']}", inline=True)
+        embed.add_field(name="🚫 Limite diário", value=f"{res['limite_diario']}", inline=True)
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+    except:
+        await interaction.response.send_message("❌ Sistema fora do ar no momento!", ephemeral=True)
 
 bot.run(TOKEN_BOT)
