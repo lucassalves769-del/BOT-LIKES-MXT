@@ -6,21 +6,15 @@ import os
 from datetime import datetime, timedelta
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 import asyncio
-from groq import Groq
 
 # ================ CONFIGURAÇÃO DAS CHAVES ================
 TOKEN_BOT = os.getenv("TOKEN_BOT")
-GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 
 # 🇧🇷 DADOS BR ATUALIZADOS
 URL_LIKE = os.getenv("URL_LIKE", "https://client.restscape.game.na/us-central1/action/interact/sendLike")
 COOKIES = os.getenv("COOKIES", "region=br; lang=pt-BR; ssid=BR7294618; game_id=100067; session_id=BR987654321xyz; open_id=1971971970")
 AUTH_TOKEN = os.getenv("AUTH_TOKEN", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1aWQiOjE5NzE5NzE5NzAsInJlZ2lvbl9jb2RlIjoiQlIiLCJsYW5nIjoicHQtQlIiLCJleHAiOjE3NDYxOTY5OTl9.abcBRtoken123456789")
 # ==========================================================
-
-# 🤖 CONFIGURAÇÃO DA IA GROQ
-ia_client = Groq(api_key=GROQ_API_KEY)
-MODELO_IA = "llama3-8b-8192"
 
 # 🚨 REGRAS EXATAS DO FREE FIRE
 QUANTIDADE_FIXA = 200       # Sempre envia 200
@@ -39,7 +33,7 @@ intents.message_content = True
 bot = commands.Bot(command_prefix="!", intents=intents)
 tree = bot.tree
 
-# ✅ CORRIGIDO DEFINITIVAMENTE
+# ✅ ATUALIZAÇÃO DE DADOS
 def atualizar_dados():
     global COOKIES
     try:
@@ -146,27 +140,27 @@ async def regras(interaction: discord.Interaction):
 
 Comando: `/like ID_DO_JOGADOR`""")
 
-# RESPOSTAS DA IA
+# ✅ RESPOSTAS SIMPLES SEM GROQ/SEM ERRO NENHUM
 @bot.event
 async def on_message(message):
     if message.author == bot.user:
         return
-    prompt = f"""
-    Você é assistente de bot de likes FF BR, fala igual irmão, linguagem de jogador brasileiro.
-    Regras:
-    - Comando correto: /like ID_DO_JOGADOR
-    - Sempre envia 200 likes
-    - FF BR só aceita 220 por dia por ID
-    - Use /regras para ver todas informações
-    Exemplo: /like 123456789
 
-    Usuário disse: {message.content}
-    """
-    resposta = ia_client.chat.completions.create(
-        model=MODELO_IA,
-        messages=[{"role":"user", "content":prompt}]
-    )
-    await message.channel.send(resposta.choices[0].message.content.strip())
+    msg = message.content.lower()
+    respostas = {
+        "oi": "Oi irmão! Tudo certo? Usa /like ID pra pegar seus likes 🇧🇷",
+        "ola": "Olá meu parceiro! Quer likes? Só digita /like e o ID!",
+        "ajuda": "📋 Comandos disponíveis:\n/like ID → envia 200 likes\n/regras → ver todas regras",
+        "comandos": "📋 Comandos disponíveis:\n/like ID → envia 200 likes\n/regras → ver todas regras",
+        "como usar": "Basta digitar `/like SEU_ID` exemplo: `/like 123456789` 🚀",
+        "limite": "🚫 Limite FF BR: 220 likes por dia, então use só 1 vez por ID por dia!"
+    }
+
+    # Procura palavra chave e responde
+    for palavra, resposta in respostas.items():
+        if palavra in msg:
+            await message.channel.send(resposta)
+            return
 
 # BOT ONLINE
 @bot.event
@@ -178,4 +172,4 @@ async def on_ready():
     print(f"📌 Comandos prontos: /like | /regras\n")
 
 bot.run(TOKEN_BOT)
-                              
+    
