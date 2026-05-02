@@ -2,26 +2,36 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 import requests
-import google.generativeai as genai
 import os
 from datetime import datetime, timedelta
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 import asyncio
+from groq import Groq
 
-# ================ PEGA TUDO PELAS VARIÁVEIS DO RAILWAY =================
+# ================ CONFIGURAÇÃO DAS CHAVES (PEGANDO DO RAILWAY) ================
 TOKEN_BOT = os.getenv("TOKEN_BOT")
-GENAI_KEY = os.getenv("GENAI_KEY")
+GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+
 URL_LIKE = os.getenv("URL_LIKE", "https://client.restscape.game.na/us-central1/action/interact/sendLike")
 COOKIES = os.getenv("COOKIES", "ssid=ffbr_8927346; game_id=100067; session_id=987654321abcdef; open_id=1971971970")
 AUTH_TOKEN = os.getenv("AUTH_TOKEN", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1aWQiOjE5NzE5NzE5NzAsInR5cGUiOjEsImV4cCI6MTc0NjE5Njk5OX0.abcXYZ123456")
-# ========================================================================
+# ==========================================================
 
-genai.configure(api_key=GENAI_KEY)
-ia = genai.GenerativeModel("gemini-1.5-flash")
+# 🤖 CONFIGURAÇÃO DA IA GROQ
+ia_client = Groq(api_key=GROQ_API_KEY)
+MODELO_IA = "llama3-8b-8192"
 
-cooldown = {}
-TEMPO_ESPERA_USUARIO = 120
-DELAY_ENTRE_ENVIO = 1.2
+# 🚨 REGRAS EXATAS DO FREE FIRE
+QUANTIDADE_FIXA = 200       # Sempre envia 200
+LIMITE_DIARIO_FF = 220       # Máximo que o FF aceita por dia
+COOLDOWN_USUARIO = 120       # 2 minutos entre usos por pessoa
+COOLDOWN_ID = 86400          # 24h para mesma ID (não deixa repetir no dia)
+
+# Controle de uso
+ids_ja_usados = {}
+usuarios_cooldown = {}
+
+DELAY_ENVIO = 1.2 # Tempo entre cada envio pra não dar erro
 
 intents = discord.Intents.default()
 intents.message_content = True
@@ -30,12 +40,12 @@ tree = bot.tree
 
 def atualizar_dados():
     try:
-        print("🔄 Atualizando dados...")
+        print("🔄 Atualizando dados da API...")
         sessao = requests.Session()
         sessao.get("https://ff.garena.com", headers={"Cookie": COOKIES})
         global COOKIES
         COOKIES = "; ".join([f"{k}={v}" for k,v in sessao.cookies.get_dict().items()])
-        print("✅ Dados atualizados!")
+        print("✅ Dados atualizados com sucesso!")
     except:
         print("⚠️ Usando dados padrão")
 
@@ -62,74 +72,103 @@ def enviar_um_like(id_alvo: str) -> bool:
     except:
         return False
 
-async def enviar_varios_likes(id_alvo: str, quantidade: int):
+async def enviar_varios_likes(id_alvo: str):
     sucessos = 0
     erros = 0
 
-    for i in range(quantidade):
+    for _ in range(QUANTIDADE_FIXA):
         if enviar_um_like(id_alvo):
             sucessos +=1
         else:
             erros +=1
-        
-        await asyncio.sleep(DELAY_ENTRE_ENVIO)
+        await asyncio.sleep(DELAY_ENVIO)
 
     return sucessos, erros
 
-@tree.command(name="like", description="Envie likes! Use: /like id:xxxx qtd:200")
-@app_commands.describe(
-    id="Digite o ID do jogador",
-    qtd="Quantidade de likes (máximo 200 por vez)"
-)
-async def like(interaction: discord.Interaction, id: str, qtd: int = 1):
-    user_id = interaction.user.id
+# COMANDO PRINCIPAL: /like ID
+@tree.command(name="like", description="Envia 200 likes | FF só aceita 220 por dia")
+@app_commands.describe(id="Digite o ID do jogador")
+async def like(interaction: discord.Interaction, id: str):
+    usuario = interaction.user.id
+    agora = datetime.now()
 
-    if user_id in cooldown:
-        tempo = round((cooldown[user_id] - datetime.now()).total_seconds()/60,1)
-        await interaction.response.send_message(f"⏳ Espera {tempo} minutos irmão, não pode usar direto!", ephemeral=True)
+    # Verifica cooldown do usuário
+    if usuario in usuarios_cooldown:
+        tempo_rest = round((usuarios_cooldown[usuario] - agora).total_seconds()/60,1)
+        await interaction.response.send_message(f"⏳ Espera {tempo_rest} min irmão, não pode usar seguido!", ephemeral=True)
         return
 
-    if qtd > 200:
-        await interaction.response.send_message("❌ Máximo 200 por vez irmão! Se quiser mais, usa de novo depois.", ephemeral=True)
+    # Verifica se ID já recebeu hoje
+    if id in ids_ja_usados:
+        tempo_rest = round((ids_ja_usados[id] - agora).total_seconds()/3600,1)
+        await interaction.response.send_message(f"⚠️ ID `{id}` já recebeu likes hoje! Volta em {tempo_rest}h | FF aceita só {LIMITE_DIARIO_FF}/dia 🚫", ephemeral=True)
         return
 
+    # Verifica se ID é só número
     if not id.isdigit():
-        await interaction.followup.send("❌ ID inválido! Exemplo: `/like id:123456789 qtd:200`")
+        await interaction.response.send_message("❌ ID inválido! Exemplo correto: `/like 123456789`", ephemeral=True)
         return
 
     await interaction.response.defer()
-    await interaction.followup.send(f"🚀 Começando envio de {qtd} likes para o ID: `{id}`\n⏳ Aguarde, vai demorar uns {round(qtd*DELAY_ENTRE_ENVIO/60,1)} minutos...")
-
-    sucessos, erros = await enviar_varios_likes(id, qtd)
-
-    msg_final = f"""
-✅ FINALIZADO IRMÃO!
+    await interaction.followup.send(f"""🚀 INICIANDO ENVIO
 🎯 ID: `{id}`
-💛 Likes enviados com sucesso: {sucessos}
+💛 Quantidade: {QUANTIDADE_FIXA} likes
+ℹ️ Regra: FF só contabiliza até {LIMITE_DIARIO_FF} por dia!
+⏳ Aguarde uns {round(QUANTIDADE_FIXA*DELAY_ENVIO/60,1)} minutos...""")
+
+    sucessos, erros = await enviar_varios_likes(id)
+
+    await interaction.followup.send(f"""✅ FINALIZADO IRMÃO!
+🎯 ID: `{id}`
+✅ Enviados com sucesso: {sucessos}
 ❌ Falhas: {erros}
-    """
-    await interaction.followup.send(msg_final)
+ℹ️ Só vai contar até {LIMITE_DIARIO_FF} likes no jogo, o resto não vale.
+🔒 Você só pode usar essa ID novamente amanhã!""")
 
-    cooldown[user_id] = datetime.now() + timedelta(seconds=TEMPO_ESPERA_USUARIO)
+    # Salva limites
+    usuarios_cooldown[usuario] = agora + timedelta(seconds=COOLDOWN_USUARIO)
+    ids_ja_usados[id] = agora + timedelta(seconds=COOLDOWN_ID)
 
+# COMANDO DE REGRAS
+@tree.command(name="regras", description="Ver as regras e limites do bot")
+async def regras(interaction: discord.Interaction):
+    await interaction.response.send_message(f"""📋 REGRAS DO BOT
+💛 Envia sempre: {QUANTIDADE_FIXA} likes por uso
+🚫 Limite Free Fire: {LIMITE_DIARIO_FF} likes por dia/ID
+⏱️ Cooldown usuário: 2 minutos entre usos
+📅 Mesmo ID só pode usar 1 vez por dia
+
+Comando: `/like ID_DO_JOGADOR`""")
+
+# RESPOSTAS DA IA
 @bot.event
 async def on_message(message):
     if message.author == bot.user:
         return
     prompt = f"""
-    Você é assistente de bot FF, fala igual irmão.
-    Comando correto: /like id:seu_id qtd:quantidade (máx 200)
-    Exemplo: /like id:123456789 qtd:200
+    Você é assistente de bot de likes FF, fala igual irmão, linguagem de jogador.
+    Regras:
+    - Comando correto: /like ID_DO_JOGADOR
+    - Sempre envia 200 likes
+    - FF só aceita 220 por dia por ID
+    - Use /regras para ver todas informações
+    Exemplo: /like 123456789
+
     Usuário disse: {message.content}
     """
-    res = ia.generate_content(prompt).text.strip()
-    await message.channel.send(res)
+    resposta = ia_client.chat.completions.create(
+        model=MODELO_IA,
+        messages=[{"role":"user", "content":prompt}]
+    )
+    await message.channel.send(resposta.choices[0].message.content.strip())
 
+# BOT ONLINE
 @bot.event
 async def on_ready():
     await tree.sync()
     scheduler.start()
-    print(f"🤖 ONLINE | ENVIO EM MASSA LIBERADO!")
+    print(f"\n🤖 BOT ONLINE E FUNCIONANDO!")
+    print(f"🔗 Conectado como: {bot.user}")
+    print(f"📌 Comandos prontos: /like | /regras\n")
 
 bot.run(TOKEN_BOT)
-  
