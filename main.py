@@ -39,7 +39,7 @@ intents.message_content = True
 bot = commands.Bot(command_prefix="!", intents=intents)
 tree = bot.tree
 
-# ✅ CORRIGIDO O ERRO DO GLOBAL, AGORA NA ORDEM CERTA
+# ✅ CORRIGIDO DEFINITIVAMENTE O GLOBAL
 def atualizar_dados():
     global COOKIES
     try:
