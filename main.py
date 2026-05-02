@@ -8,7 +8,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 import asyncio
 from groq import Groq
 
-# ================ CONFIGURAÇÃO DAS CHAVES (PEGANDO DO RAILWAY) ================
+# ================ CONFIGURAÇÃO DAS CHAVES ================
 TOKEN_BOT = os.getenv("TOKEN_BOT")
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 
@@ -25,7 +25,7 @@ MODELO_IA = "llama3-8b-8192"
 QUANTIDADE_FIXA = 200       # Sempre envia 200
 LIMITE_DIARIO_FF = 220       # Máximo que o FF aceita por dia
 COOLDOWN_USUARIO = 120       # 2 minutos entre usos por pessoa
-COOLDOWN_ID = 86400          # 24h para mesma ID (não deixa repetir no dia)
+COOLDOWN_ID = 86400          # 24h para mesma ID
 
 # Controle de uso
 ids_ja_usados = {}
@@ -38,11 +38,13 @@ intents.message_content = True
 bot = commands.Bot(command_prefix="!", intents=intents)
 tree = bot.tree
 
+# ARRUMADO AQUI, global só dentro da função, na ordem certa
 def atualizar_dados():
     try:
         print("🔄 Atualizando dados da API...")
         sessao = requests.Session()
         sessao.get("https://ff.garena.com", headers={"Cookie": COOKIES})
+        # Declara global ANTES de usar, agora tá certo
         global COOKIES
         COOKIES = "; ".join([f"{k}={v}" for k,v in sessao.cookies.get_dict().items()])
         print("✅ Dados atualizados com sucesso!")
@@ -172,3 +174,4 @@ async def on_ready():
     print(f"📌 Comandos prontos: /like | /regras\n")
 
 bot.run(TOKEN_BOT)
+    
