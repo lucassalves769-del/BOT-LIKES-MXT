@@ -39,7 +39,7 @@ intents.message_content = True
 bot = commands.Bot(command_prefix="!", intents=intents)
 tree = bot.tree
 
-# ✅ CORRIGIDO DEFINITIVAMENTE O GLOBAL
+# ✅ CORRIGIDO DEFINITIVAMENTE
 def atualizar_dados():
     global COOKIES
     try:
@@ -178,4 +178,4 @@ async def on_ready():
     print(f"📌 Comandos prontos: /like | /regras\n")
 
 bot.run(TOKEN_BOT)
-    
+        
